@@ -1,0 +1,161 @@
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+local mouse = player:GetMouse()
+local workspace = game:GetService("Workspace")
+
+local screenGui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
+screenGui.Name = "RayfieldStyleMenu"
+
+local frame = Instance.new("Frame", screenGui)
+frame.Size = UDim2.new(0, 200, 0, 150)
+frame.Position = UDim2.new(0, 10, 0, 10)
+frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+frame.BorderSizePixel = 0
+frame.Active = true
+frame.Draggable = true
+
+local espButton = Instance.new("TextButton", frame)
+espButton.Size = UDim2.new(1, -20, 0, 50)
+espButton.Position = UDim2.new(0, 10, 0, 10)
+espButton.Text = "Activar ESP"
+espButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+espButton.TextColor3 = Color3.new(1,1,1)
+espButton.Font = Enum.Font.SourceSansBold
+espButton.TextSize = 20
+
+local autoShootButton = Instance.new("TextButton", frame)
+autoShootButton.Size = UDim2.new(1, -20, 0, 50)
+autoShootButton.Position = UDim2.new(0, 10, 0, 70)
+autoShootButton.Text = "Activar Auto Shoot"
+autoShootButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+autoShootButton.TextColor3 = Color3.new(1,1,1)
+autoShootButton.Font = Enum.Font.SourceSansBold
+autoShootButton.TextSize = 20
+
+local espBoxes = {}
+local espEnabled = false
+
+local function createESP(character)
+    local rootPart = character:FindFirstChild("HumanoidRootPart")
+    if not rootPart then return end
+    if espBoxes[character] then return end
+
+    local box = Instance.new("BoxHandleAdornment")
+    box.Adornee = rootPart
+    box.Size = Vector3.new(6, 8, 6)
+    box.Transparency = 0.6
+    box.Color3 = Color3.new(0, 1, 0)
+    box.AlwaysOnTop = true
+    box.ZIndex = 10
+    box.Parent = rootPart
+
+    espBoxes[character] = box
+end
+
+local function removeESP(character)
+    if espBoxes[character] then
+        espBoxes[character]:Destroy()
+        espBoxes[character] = nil
+    end
+end
+
+local function toggleESP(enable)
+    espEnabled = enable
+    if espEnabled then
+        for _, p in pairs(Players:GetPlayers()) do
+            if p.Character and p ~= player then
+                createESP(p.Character)
+            end
+        end
+        Players.PlayerAdded:Connect(function(p)
+            p.CharacterAdded:Connect(function(char)
+                if espEnabled then createESP(char) end
+            end)
+        end)
+        Players.PlayerRemoving:Connect(function(p)
+            if p.Character then removeESP(p.Character) end
+        end)
+    else
+        for char, box in pairs(espBoxes) do
+            box:Destroy()
+        end
+        espBoxes = {}
+    end
+end
+
+local autoShootEnabled = false
+local firing = false
+local damage = 30
+local fireRate = 0.2
+local range = 300
+local tool = nil
+
+local function getTool()
+    tool = player.Character and player.Character:FindFirstChildOfClass("Tool")
+end
+
+local function raycastShoot()
+    if not tool or not tool:FindFirstChild("Handle") then return end
+    local origin = tool.Handle.Position
+    local mousePos = mouse.Hit.p
+    local direction = (mousePos - origin).Unit * range
+
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterDescendantsInstances = {player.Character}
+    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+
+    local result = workspace:Raycast(origin, direction, raycastParams)
+    if result and result.Instance then
+        local hitPart = result.Instance
+        local character = hitPart:FindFirstAncestorOfClass("Model")
+        if character then
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+            if humanoid and humanoid.Health > 0 and character ~= player.Character then
+                humanoid:TakeDamage(damage)
+            end
+        end
+    end
+end
+
+local function startFiring()
+    if firing then return end
+    firing = true
+    while firing and autoShootEnabled do
+        raycastShoot()
+        wait(fireRate)
+    end
+end
+
+local function stopFiring()
+    firing = false
+end
+
+espButton.MouseButton1Click:Connect(function()
+    espEnabled = not espEnabled
+    if espEnabled then
+        espButton.Text = "Desactivar ESP"
+    else
+        espButton.Text = "Activar ESP"
+    end
+    toggleESP(espEnabled)
+end)
+
+autoShootButton.MouseButton1Click:Connect(function()
+    autoShootEnabled = not autoShootEnabled
+    if autoShootEnabled then
+        autoShootButton.Text = "Desactivar Auto Shoot"
+        getTool()
+        startFiring()
+    else
+        autoShootButton.Text = "Activar Auto Shoot"
+        stopFiring()
+    end
+end)
+
+player.CharacterAdded:Connect(function(char)
+    char.ChildAdded:Connect(function(child)
+        if child:IsA("Tool") then
+            tool = child
+        end
+    end)
+end)
